@@ -2,7 +2,7 @@
 #include <bitset>
 #include <vector>
 
-#include "hash_network.h"
+#include "block_similarity.h"
 
 HashNetwork::HashNetwork(char *module_file_name) {
     this->module = torch::jit::load(module_file_name);
