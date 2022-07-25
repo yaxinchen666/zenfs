@@ -65,6 +65,30 @@ void test_get_nearest_hash() {
     }
 }
 
+void test_get_similar_block() {
+    char data_file_name[] = "/home/yaxin.chen/data/stackoverflow/cs.stackexchange.com/PostHistory.xml";
+    FILE* f = fopen(data_file_name, "rb");
+    char blocks[ZENFS_SIM_BLOCK_SIZE * 256];
+    int num_blocks = fread(blocks, ZENFS_SIM_BLOCK_SIZE, 256, f);
+    fclose(f);
+    std::cout << "num_blocks read: " << num_blocks << "\n";
+
+    char module_file_name[] = "/home/yaxin.chen/repos/rocksdb/plugin/zenfs/fs/similarity/model/hash_network.pt";
+    HashNetwork model(module_file_name);
+    std::vector<std::bitset<ZENFS_SIM_HASH_SIZE>> hash_code = model.genHash(blocks, num_blocks);
+
+    int count = 0;
+    std::bitset<ZENFS_SIM_HASH_SIZE> nearest_hash_code;
+    HashPool pool(20, 4);
+    for (int i = 0; i < num_blocks; ++i) {
+        bool has_neighbor = pool.get_nearest_hash(hash_code[i], nearest_hash_code);
+        if (has_neighbor) {
+            ++count;
+        }
+    }
+    std::cout << "num neighbors: " << count << "\n"; // 235 for threshold 25; 216 for threshold 20
+}
+
 int main() {
-    test_get_nearest_hash();
+    test_get_similar_block();
 }
