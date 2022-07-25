@@ -8,7 +8,8 @@ struct HashPool::ngt_member {
 };
 
 HashPool::HashPool(int distance_threshold, int buf_size, int num_threads, std::string index_path) :
-    distance_threshold(distance_threshold), buf_count(0), buf_size(buf_size), num_threads(num_threads) {
+    distance_threshold(distance_threshold), buf_count(0), buf_size(buf_size), num_threads(num_threads),
+    ngt_member_ptr(std::make_unique<ngt_member>()) {
     this->ngt_member_ptr->property = new NGT::Property();
     this->ngt_member_ptr->property->dimension = ZENFS_SIM_HASH_SIZE / 8;
     this->ngt_member_ptr->property->objectType	= NGT::ObjectSpace::ObjectType::Uint8;

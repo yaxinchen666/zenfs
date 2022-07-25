@@ -8,7 +8,8 @@ struct HashNetwork::member {
     torch::jit::script::Module module;
 };
 
-HashNetwork::HashNetwork(char *module_file_name) {
+HashNetwork::HashNetwork(char *module_file_name) : member_ptr(std::make_unique<member>()) {
+    // TODO check file exists & load success
     this->member_ptr->module = torch::jit::load(module_file_name);
     this->member_ptr->module.eval();
 }
@@ -16,6 +17,7 @@ HashNetwork::HashNetwork(char *module_file_name) {
 HashNetwork::~HashNetwork() {}
 
 std::vector<std::bitset<ZENFS_SIM_HASH_SIZE>> HashNetwork::genHash(char *blocks, int num_blocks) {
+    std::cerr << "genhash\n";
     float *data = new float[num_blocks * ZENFS_SIM_BLOCK_SIZE];
     for (int i = 0; i < num_blocks * ZENFS_SIM_BLOCK_SIZE; ++i) {
         data[i] = ((int)(blocks[i])) / 128.0;
