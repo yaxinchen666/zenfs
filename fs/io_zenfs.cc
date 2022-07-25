@@ -27,6 +27,8 @@
 #include "rocksdb/env.h"
 #include "util/coding.h"
 
+#include "block_similarity.h"
+
 namespace ROCKSDB_NAMESPACE {
 
 ZoneExtent::ZoneExtent(uint64_t start, uint64_t length, Zone* zone)

@@ -1,4 +1,3 @@
-#include <torch/script.h>
 #include <bitset>
 #include <vector>
 #include <string>
@@ -13,7 +12,8 @@ const int ZENFS_SIM_HASH_SIZE = 128;
 
 class HashNetwork {
 private:
-    torch::jit::script::Module module;
+    struct member;
+    std::unique_ptr<member> member_ptr;
 public:
     HashNetwork(char *module_file_name);
     ~HashNetwork();
@@ -27,8 +27,8 @@ public:
 
 class HashPool {
 private:
-    NGT::Property *property;
-    NGT::Index *index;
+    struct ngt_member;
+    std::unique_ptr<ngt_member> ngt_member_ptr;
     int buf_count;
     int buf_size;  // specifies the frequency of createIndex
     int num_threads;
