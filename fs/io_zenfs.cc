@@ -23,11 +23,13 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <bitset>
+#include <unordered_map>
 
 #include "rocksdb/env.h"
 #include "util/coding.h"
 
-#include "block_similarity.h"
+#include "zenfs_xdelta3.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -472,6 +474,8 @@ IOStatus ZoneFile::BufferedAppend(char* buffer, uint32_t data_size) {
   uint32_t block_sz = GetBlockSize();
   IOStatus s;
 
+  std::cout << "bufferedappend \n";
+
   if (active_zone_ == NULL) {
     s = AllocateNewZone();
     if (!s.ok()) return s;
@@ -767,7 +771,7 @@ void ZoneFile::SetActiveZone(Zone* zone) {
 }
 
 ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
-                                     std::shared_ptr<ZoneFile> zoneFile) {
+                                     std::shared_ptr<ZoneFile> zoneFile, char* module_file_name) {
   assert(zoneFile->IsOpenForWR());
   wp = zoneFile->GetFileSize();
 
@@ -800,6 +804,16 @@ ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
 
       if (ret) buffer = nullptr;
       assert(buffer != nullptr);
+
+      int compressed_ret =
+          posix_memalign((void**)&compressed_buffer, sysconf(_SC_PAGESIZE), buffer_sz);
+      if (compressed_ret) compressed_buffer = nullptr;
+      assert(compressed_buffer != nullptr);
+
+      // compression
+      if (module_file_name) {
+        hash_network = new HashNetwork(module_file_name);
+      }
     }
   }
 
@@ -813,6 +827,9 @@ ZonedWritableFile::~ZonedWritableFile() {
       free(sparse_buffer);
     } else {
       free(buffer);
+      if (hash_network) {
+        delete hash_network;
+      }
     }
   }
 
@@ -919,7 +936,12 @@ IOStatus ZonedWritableFile::FlushBuffer() {
   if (zoneFile_->IsSparse()) {
     s = zoneFile_->SparseAppend(sparse_buffer, buffer_pos);
   } else {
-    s = zoneFile_->BufferedAppend(buffer, buffer_pos);
+    if (hash_network) {
+      uint32_t compressed_buffer_pos = Compress();
+      s = zoneFile_->BufferedAppend(compressed_buffer, compressed_buffer_pos);
+    } else {
+      s = zoneFile_->BufferedAppend(buffer, buffer_pos);
+    }
   }
 
   if (!s.ok()) {
@@ -930,6 +952,53 @@ IOStatus ZonedWritableFile::FlushBuffer() {
   buffer_pos = 0;
 
   return IOStatus::OK();
+}
+
+uint32_t ZonedWritableFile::Compress() {
+  uint32_t compressed_buffer_pos = 0;
+  int num_blocks = buffer_pos / block_sz;
+
+  // generate hash code
+  std::vector<std::bitset<ZENFS_SIM_HASH_SIZE>> hash_code =
+      hash_network->genHash(buffer, num_blocks);
+  
+  // TODO put hash_pool into private member & customize the parameters of hash_pool?
+  // search for nearest hash code & compress
+  HashPool hash_pool(25, 4);
+  std::unordered_map<std::bitset<ZENFS_SIM_HASH_SIZE>, int> hash_block_index;
+  std::bitset<ZENFS_SIM_HASH_SIZE> nearest_hash_code;
+  for (int i = 0; i < num_blocks; ++i) {
+    hash_block_index[hash_code[i]] = i;
+    bool has_nearest_hash = hash_pool.get_nearest_hash(hash_code[i], nearest_hash_code);
+    if (has_nearest_hash) {
+	    // delta compress
+      char compressed_data[2 * ZENFS_SIM_BLOCK_SIZE];
+      int size = xdelta3_compress(buffer + i * ZENFS_SIM_BLOCK_SIZE,
+                                  ZENFS_SIM_BLOCK_SIZE,
+                                  buffer + hash_block_index[nearest_hash_code] * ZENFS_SIM_BLOCK_SIZE,
+                                  ZENFS_SIM_BLOCK_SIZE,
+                                  compressed_data,
+                                  1);
+      // TODO if size < ?
+      memcpy(compressed_buffer + compressed_buffer_pos, compressed_data, size);
+      compressed_buffer_pos += size;
+    } else {
+      // TODO do lz compression
+      memcpy(compressed_buffer + compressed_buffer_pos, buffer + i * ZENFS_SIM_BLOCK_SIZE, ZENFS_SIM_BLOCK_SIZE);
+      compressed_buffer_pos += ZENFS_SIM_BLOCK_SIZE;
+    }
+  }
+
+  // copy the last block
+  int remaining_size = buffer_pos % block_sz;
+  if (remaining_size) {
+    memcpy(compressed_buffer + compressed_buffer_pos,
+           buffer + num_blocks * ZENFS_SIM_BLOCK_SIZE,
+           remaining_size);
+    compressed_buffer_pos += remaining_size;
+  }
+
+  return compressed_buffer_pos;
 }
 
 IOStatus ZonedWritableFile::BufferedWrite(const Slice& slice) {

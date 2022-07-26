@@ -25,6 +25,8 @@
 #include "rocksdb/io_status.h"
 #include "zbd_zenfs.h"
 
+#include "block_similarity.h"
+
 namespace ROCKSDB_NAMESPACE {
 
 class ZoneExtent {
@@ -193,7 +195,7 @@ class ZoneFile {
 class ZonedWritableFile : public FSWritableFile {
  public:
   explicit ZonedWritableFile(ZonedBlockDevice* zbd, bool buffered,
-                             std::shared_ptr<ZoneFile> zoneFile);
+                             std::shared_ptr<ZoneFile> zoneFile, char* module_file_name=nullptr);
   virtual ~ZonedWritableFile();
 
   virtual IOStatus Append(const Slice& data, const IOOptions& options,
@@ -255,6 +257,10 @@ class ZonedWritableFile : public FSWritableFile {
   MetadataWriter* metadata_writer_;
 
   std::mutex buffer_mtx_;
+
+  char* compressed_buffer;
+  HashNetwork* hash_network;
+  uint32_t Compress();
 };
 
 class ZonedSequentialFile : public FSSequentialFile {
