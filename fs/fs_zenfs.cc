@@ -579,6 +579,18 @@ IOStatus ZenFS::NewWritableFile(const std::string& filename,
   return OpenWritableFile(fname, file_opts, result, nullptr, false);
 }
 
+IOStatus ZenFS::NewWritableFileWithCompression(const std::string& filename,
+                                const FileOptions& file_opts,
+                                std::unique_ptr<FSWritableFile>* result,
+                                IODebugContext* /*dbg*/,
+                                char* module_file_name) {
+  std::string fname = FormatPathLexically(filename);
+  Debug(logger_, "New writable file: %s direct: %d\n", fname.c_str(),
+        file_opts.use_direct_writes);
+
+  return OpenWritableFile(fname, file_opts, result, nullptr, false, module_file_name);
+}
+
 IOStatus ZenFS::ReuseWritableFile(const std::string& filename,
                                   const std::string& old_filename,
                                   const FileOptions& file_opts,
@@ -760,7 +772,8 @@ IOStatus ZenFS::DeleteDirRecursive(const std::string& d,
 IOStatus ZenFS::OpenWritableFile(const std::string& filename,
                                  const FileOptions& file_opts,
                                  std::unique_ptr<FSWritableFile>* result,
-                                 IODebugContext* dbg, bool reopen) {
+                                 IODebugContext* dbg, bool reopen,
+                                 char* module_file_name) {
   IOStatus s;
   std::string fname = FormatPathLexically(filename);
   bool resetIOZones = false;
@@ -805,7 +818,7 @@ IOStatus ZenFS::OpenWritableFile(const std::string& filename,
     zoneFile->AcquireWRLock();
     files_.insert(std::make_pair(fname.c_str(), zoneFile));
     result->reset(
-        new ZonedWritableFile(zbd_, !file_opts.use_direct_writes, zoneFile));
+        new ZonedWritableFile(zbd_, !file_opts.use_direct_writes, zoneFile, module_file_name));
   }
 
   if (resetIOZones) s = zbd_->ResetUnusedIOZones();

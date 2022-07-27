@@ -474,8 +474,6 @@ IOStatus ZoneFile::BufferedAppend(char* buffer, uint32_t data_size) {
   uint32_t block_sz = GetBlockSize();
   IOStatus s;
 
-  std::cout << "bufferedappend \n";
-
   if (active_zone_ == NULL) {
     s = AllocateNewZone();
     if (!s.ok()) return s;
@@ -979,9 +977,13 @@ uint32_t ZonedWritableFile::Compress() {
                                   ZENFS_SIM_BLOCK_SIZE,
                                   compressed_data,
                                   1);
-      // TODO if size < ?
-      memcpy(compressed_buffer + compressed_buffer_pos, compressed_data, size);
-      compressed_buffer_pos += size;
+      if (size < ZENFS_SIM_BLOCK_SIZE) {
+        memcpy(compressed_buffer + compressed_buffer_pos, compressed_data, size);
+        compressed_buffer_pos += size;
+      } else {
+        memcpy(compressed_buffer + compressed_buffer_pos, buffer + i * ZENFS_SIM_BLOCK_SIZE, ZENFS_SIM_BLOCK_SIZE);
+        compressed_buffer_pos += ZENFS_SIM_BLOCK_SIZE;
+      }
     } else {
       // TODO do lz compression
       memcpy(compressed_buffer + compressed_buffer_pos, buffer + i * ZENFS_SIM_BLOCK_SIZE, ZENFS_SIM_BLOCK_SIZE);

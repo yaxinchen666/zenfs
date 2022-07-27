@@ -263,7 +263,8 @@ class ZenFS : public FileSystemWrapper {
   IOStatus OpenWritableFile(const std::string& fname,
                             const FileOptions& file_opts,
                             std::unique_ptr<FSWritableFile>* result,
-                            IODebugContext* dbg, bool reopen);
+                            IODebugContext* dbg, bool reopen,
+                            char* module_file_name=nullptr);
 
  public:
   explicit ZenFS(ZonedBlockDevice* zbd, std::shared_ptr<FileSystem> aux_fs,
@@ -294,6 +295,11 @@ class ZenFS : public FileSystemWrapper {
                                    const FileOptions& file_opts,
                                    std::unique_ptr<FSWritableFile>* result,
                                    IODebugContext* dbg) override;
+  IOStatus NewWritableFileWithCompression(const std::string& filename,
+                                          const FileOptions& file_opts,
+                                          std::unique_ptr<FSWritableFile>* result,
+                                          IODebugContext* /*dbg*/,
+                                          char* module_file_name=nullptr);
   virtual IOStatus ReuseWritableFile(const std::string& fname,
                                      const std::string& old_fname,
                                      const FileOptions& file_opts,
