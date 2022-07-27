@@ -17,7 +17,6 @@ HashNetwork::HashNetwork(char *module_file_name) : member_ptr(std::make_unique<m
 HashNetwork::~HashNetwork() {}
 
 std::vector<std::bitset<ZENFS_SIM_HASH_SIZE>> HashNetwork::genHash(char *blocks, int num_blocks) {
-    std::cerr << "genhash\n";
     float *data = new float[num_blocks * ZENFS_SIM_BLOCK_SIZE];
     for (int i = 0; i < num_blocks * ZENFS_SIM_BLOCK_SIZE; ++i) {
         data[i] = ((int)(blocks[i])) / 128.0;
