@@ -96,7 +96,8 @@ void zenfs_write_file(std::string bdevname, std::string fname, std::string data)
 }
 
 // read num_blocks * 4096 bytes from in_fname (in default fs), write to zenfs_out_fname (in zenfs)
-void zenfs_write_blocks(std::string bdevname, std::string zenfs_out_fname, std::string in_fname, int num_blocks) {
+void zenfs_write_blocks(std::string bdevname, char *module_file_name,
+                        std::string zenfs_out_fname, std::string in_fname, int num_blocks) {
   Status s;
   std::unique_ptr<ZonedBlockDevice> zbd = zbd_open(bdevname, false, true);
   if (!zbd) {
@@ -118,7 +119,6 @@ void zenfs_write_blocks(std::string bdevname, std::string zenfs_out_fname, std::
   FileOptions fopts;
   IOOptions iopts;
   IODebugContext dbg;
-  char module_file_name[] = "/home/yaxin.chen/repos/rocksdb/plugin/zenfs/fs/similarity/model/hash_network.pt";
   s = zenFS->NewWritableFileWithCompression(zenfs_out_fname, fopts, &w_f, &dbg,
           module_file_name);
   if (!s.ok()) {
@@ -138,7 +138,7 @@ void zenfs_write_blocks(std::string bdevname, std::string zenfs_out_fname, std::
       break;
     }
 
-    s = w_f->Append(Slice(block), iopts, &dbg);
+    s = w_f->Append(Slice(block, BLOCK_SIZE), iopts, &dbg);
     if (!s.ok()) {
       fprintf(stderr, "Failed to write data, error: %s\n",
               s.ToString().c_str());
@@ -202,8 +202,11 @@ void zenfs_read_file(std::string bdevname, std::string fname, size_t length) {
 int main(int argc, char **argv) {
   // ROCKSDB_NAMESPACE::zenfs_read_file("nullb0", "f_test", 256);
   // ROCKSDB_NAMESPACE::zenfs_write_file("nullb0", "f_test", "aa");
+  char module_file_name[] = "../fs/similarity/model/hash_network.pt";
+  std::string input_file_name = "../../../../../data/stackoverflow/cs.stackexchange.com/PostHistory.xml";
   ROCKSDB_NAMESPACE::zenfs_write_blocks("nullb0",
+      module_file_name,
       "f_test",
-      "/home/yaxin.chen/data/stackoverflow/cs.stackexchange.com/PostHistory.xml",
+      input_file_name,
       8192);
 }
