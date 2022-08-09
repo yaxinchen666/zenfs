@@ -738,7 +738,7 @@ extern const xd3_sec_type lzma_sec_type;
 
 /* Process the inline pass. */
 #define __XDELTA3_C_INLINE_PASS__
-#include "xdelta3.cc"
+#include "xdelta3.c"
 #undef __XDELTA3_C_INLINE_PASS__
 
 /* Secondary compression */
@@ -5496,3 +5496,4 @@ XD3_TEMPLATE(xd3_string_match_) (xd3_stream *stream)
 
 #endif /* XD3_ENCODER */
 #endif /* __XDELTA3_C_TEMPLATE_PASS__ */
+

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 project(xdelta)
 
 add_library(xdelta SHARED
-    xdelta3.cc
+    xdelta3.c
     zenfs_xdelta3.cc
 )
 
