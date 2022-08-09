@@ -168,3 +168,9 @@ before submitting a PR.
 clang-format-11 -n -Werror --style=file fs/* util/zenfs.cc # Check for style issues
 clang-format-11 -i --style=file fs/* util/zenfs.cc         # Auto-fix the style issues
 ```
+
+# ZenFS with Machine Learning Enhanced Delta Compression of Logical Blocks
+
+This branch adds delta compression of blocks to ZenFS. When creating and writing to a file pointer with compression, data written to the buffer will be delta compressed before being written to the disk. The delta compression is enhanced by a machine learning model which generates hash codes for logical blocks and helps finding similar blocks with the hash codes.
+
+For details, please check [README](./test_ml/README.md).
