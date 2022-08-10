@@ -45,8 +45,9 @@ To avoid compilation error when using external packages in ZenFS, they need to b
 [Xdelta](https://github.com/jmacd/xdelta) is used as the delta compression algorithm. The delta compression library in this project is built with DeepSketch's code https://github.com/dgist-datalab/deepsketch-fast2022/tree/main/xdelta3, which sets parameters and contains a function `xdelta3_compress` that delta compress blocks. To compile it into a library to be used in ZenFS, the following modifications are applied:
 
 1. Create `zenfs_xdelta3.cc/h`; move the function `xdelta3_compress` from `xdelta3.c/h` to `zenfs_xdelta3.cc/h`.
-2. Add `extern "C"` to `xdelta3.h`.
-3. Use CMakeLists.txt to compile them into library. Library source: `xdelta3.c, zenfs_xdelta3.cc`; public header: `zenfs_xdelta3.h`.
+2. Set the xdelta compression level from default to fastest in config in `xdelta3_compress`.
+3. Add `extern "C"` to `xdelta3.h`.
+4. Use CMakeLists.txt to compile them into library. Library source: `xdelta3.c, zenfs_xdelta3.cc`; public header: `zenfs_xdelta3.h`.
 
 The modified files as well as the dynamic library file can be found in `test_ml/similarity_lib/deepsketch_xdelta3`. To install the library, you can either
 

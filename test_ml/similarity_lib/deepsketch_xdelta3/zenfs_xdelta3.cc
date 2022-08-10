@@ -23,6 +23,7 @@ int xdelta3_compress(char* InFile, int InSize, char* SrcFile, int SrcSize, char*
 
 	xd3_init_config(&config, XD3_ADLER32);
 	config.winsize = BufSize;
+    config.smatch_cfg = XD3_SMATCH_FASTEST;
 	xd3_config_stream(&stream, &config);
 
 	source.blksize = BufSize;
@@ -112,6 +113,5 @@ process:
 	return OutSize;
 
 };
-void test_compress() {}
 
 //#endif // XDELTA3_COMPRESS
