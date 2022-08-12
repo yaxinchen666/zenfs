@@ -271,6 +271,7 @@ class ZonedWritableFile : public FSWritableFile {
 
   HashNetwork* hash_network;
   uint32_t Compress();
+  void parallelGenHashBatch(int block_index, int gen_num_blocks);
   void parallelGenHash(int num_blocks);
   void parallelDeltaCompress(int num_blocks);
 };
