@@ -26,6 +26,9 @@
 #include <bitset>
 #include <unordered_map>
 
+#include <thread>
+#include <condition_variable>
+
 #include "rocksdb/env.h"
 #include "util/coding.h"
 
@@ -797,6 +800,7 @@ ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
       buffer = sparse_buffer + ZoneFile::SPARSE_HEADER_SIZE;
     } else {
       buffer_sz = 1024 * 1024;
+      batch_sz = buffer_sz / block_sz / 4;
       int ret =
           posix_memalign((void**)&buffer, sysconf(_SC_PAGESIZE), buffer_sz);
 
@@ -935,7 +939,7 @@ IOStatus ZonedWritableFile::FlushBuffer() {
     s = zoneFile_->SparseAppend(sparse_buffer, buffer_pos);
   } else {
     if (hash_network) {
-      uint32_t compressed_buffer_pos = Compress();
+      Compress();
       s = zoneFile_->BufferedAppend(compressed_buffer, compressed_buffer_pos);
     } else {
       s = zoneFile_->BufferedAppend(buffer, buffer_pos);
@@ -948,49 +952,85 @@ IOStatus ZonedWritableFile::FlushBuffer() {
 
   wp += buffer_pos;
   buffer_pos = 0;
+  compressed_buffer_pos = 0;
 
   return IOStatus::OK();
 }
 
-uint32_t ZonedWritableFile::Compress() {
-  uint32_t compressed_buffer_pos = 0;
-  int num_blocks = buffer_pos / block_sz;
+void ZonedWritableFile::parallelGenHash(int num_blocks) {
+  std::cout << "parallel genhash\n";
+  int remaining_num_blocks = num_blocks;
+  while (remaining_num_blocks > 0) {
+    int gen_num_blocks = remaining_num_blocks < batch_sz ? remaining_num_blocks : batch_sz;
+    std::vector<std::bitset<ZENFS_SIM_HASH_SIZE>> hash_code =
+      hash_network->genHash(buffer + (num_blocks - remaining_num_blocks) * 4096, gen_num_blocks);
+    {
+      std::unique_lock<std::mutex> lck(hash_code_queue_mtx_);
+      hash_code_queue.emplace(std::move(hash_code));
+      hash_code_queue_cv_.notify_all();
+    }
+    remaining_num_blocks -= gen_num_blocks;
+  }
+}
 
-  // generate hash code
-  std::vector<std::bitset<ZENFS_SIM_HASH_SIZE>> hash_code =
-      hash_network->genHash(buffer, num_blocks);
-  
-  // TODO put hash_pool into private member & customize the parameters of hash_pool?
-  // search for nearest hash code & compress
+void ZonedWritableFile::parallelDeltaCompress(int num_blocks) {
   HashPool hash_pool(25, 4);
   std::unordered_map<std::bitset<ZENFS_SIM_HASH_SIZE>, int> hash_block_index;
   std::bitset<ZENFS_SIM_HASH_SIZE> nearest_hash_code;
-  for (int i = 0; i < num_blocks; ++i) {
-    hash_block_index[hash_code[i]] = i;
-    bool has_nearest_hash = hash_pool.get_nearest_hash(hash_code[i], nearest_hash_code);
-    if (has_nearest_hash) {
-	    // delta compress
-      char compressed_data[2 * ZENFS_SIM_BLOCK_SIZE];
-      int size = xdelta3_compress(buffer + i * ZENFS_SIM_BLOCK_SIZE,
-                                  ZENFS_SIM_BLOCK_SIZE,
-                                  buffer + hash_block_index[nearest_hash_code] * ZENFS_SIM_BLOCK_SIZE,
-                                  ZENFS_SIM_BLOCK_SIZE,
-                                  compressed_data,
-                                  1);
-      if (size < ZENFS_SIM_BLOCK_SIZE) {
-        memcpy(compressed_buffer + compressed_buffer_pos, compressed_data, size);
-        compressed_buffer_pos += size;
+  int block_idx = 0;
+  while (block_idx < num_blocks) {
+    std::vector<std::bitset<ZENFS_SIM_HASH_SIZE>> hash_code;
+    {
+      std::unique_lock<std::mutex> lck(hash_code_queue_mtx_);
+      while (hash_code_queue.empty()) hash_code_queue_cv_.wait(lck);
+      hash_code = std::move(hash_code_queue.front());
+      hash_code_queue.pop();
+    }
+
+    for (size_t i = 0; i < hash_code.size(); ++i) {
+      hash_block_index[hash_code[i]] = block_idx;
+      bool has_nearest_hash = hash_pool.get_nearest_hash(hash_code[i], nearest_hash_code);
+      if (has_nearest_hash) {
+        // delta compress
+        char compressed_data[2 * ZENFS_SIM_BLOCK_SIZE];
+        int size = xdelta3_compress(buffer + block_idx * ZENFS_SIM_BLOCK_SIZE,
+                                    ZENFS_SIM_BLOCK_SIZE,
+                                    buffer + hash_block_index[nearest_hash_code] * ZENFS_SIM_BLOCK_SIZE,
+                                    ZENFS_SIM_BLOCK_SIZE,
+                                    compressed_data,
+                                    1);
+        if (size < ZENFS_SIM_BLOCK_SIZE) {
+          memcpy(compressed_buffer + compressed_buffer_pos, compressed_data, size);
+          compressed_buffer_pos += size;
+        } else {
+          memcpy(compressed_buffer + compressed_buffer_pos, buffer + block_idx * ZENFS_SIM_BLOCK_SIZE, ZENFS_SIM_BLOCK_SIZE);
+          compressed_buffer_pos += ZENFS_SIM_BLOCK_SIZE;
+        }
       } else {
-        memcpy(compressed_buffer + compressed_buffer_pos, buffer + i * ZENFS_SIM_BLOCK_SIZE, ZENFS_SIM_BLOCK_SIZE);
+        // TODO do lz compression
+        memcpy(compressed_buffer + compressed_buffer_pos, buffer + block_idx * ZENFS_SIM_BLOCK_SIZE, ZENFS_SIM_BLOCK_SIZE);
         compressed_buffer_pos += ZENFS_SIM_BLOCK_SIZE;
       }
-    } else {
-      // TODO do lz compression
-      memcpy(compressed_buffer + compressed_buffer_pos, buffer + i * ZENFS_SIM_BLOCK_SIZE, ZENFS_SIM_BLOCK_SIZE);
-      compressed_buffer_pos += ZENFS_SIM_BLOCK_SIZE;
+      
+      ++block_idx;
     }
   }
+}
 
+uint32_t ZonedWritableFile::Compress() {
+  compressed_buffer_pos = 0;
+  int num_blocks = buffer_pos / block_sz;
+
+  // generate hash code
+  std::thread gen_hash_thread(&ZonedWritableFile::parallelGenHash, this, num_blocks);
+  
+  // TODO put hash_pool into private member & customize the parameters of hash_pool?
+  // search for nearest hash code & compress
+  std::thread compress_thread(&ZonedWritableFile::parallelDeltaCompress, this, num_blocks);
+
+  gen_hash_thread.join();
+  compress_thread.join();
+  
   // copy the last block
   int remaining_size = buffer_pos % block_sz;
   if (remaining_size) {

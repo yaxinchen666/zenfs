@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include <queue>
+
 #include "rocksdb/file_system.h"
 #include "rocksdb/io_status.h"
 #include "zbd_zenfs.h"
@@ -259,8 +261,18 @@ class ZonedWritableFile : public FSWritableFile {
   std::mutex buffer_mtx_;
 
   char* compressed_buffer;
+  uint32_t compressed_buffer_pos;
+
+  int batch_sz;  // number of blocks in a batch
+  std::queue<std::vector<std::bitset<ZENFS_SIM_HASH_SIZE>>> hash_code_queue;
+  std::queue<int> hash_code_index_queue;
+  std::mutex hash_code_queue_mtx_;
+  std::condition_variable hash_code_queue_cv_;
+
   HashNetwork* hash_network;
   uint32_t Compress();
+  void parallelGenHash(int num_blocks);
+  void parallelDeltaCompress(int num_blocks);
 };
 
 class ZonedSequentialFile : public FSSequentialFile {
